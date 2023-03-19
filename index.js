@@ -1,25 +1,24 @@
+const Koa = require("koa");
+const Router = require("koa-router");
+const logger = require("koa-logger");
+const bodyParser = require("koa-bodyparser");
+const fs = require("fs");
 const path = require("path");
-const express = require("express");
-const cors = require("cors");
-const morgan = require("morgan");
 const { init: initDB, Counter } = require("./db");
 
-const logger = morgan("tiny");
+const router = new Router();
 
-const app = express();
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
-app.use(cors());
-app.use(logger);
+const homePage = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
 
 // 首页
-app.get("/", async (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+router.get("/", async (ctx) => {
+  ctx.body = homePage;
 });
 
 // 更新计数
-app.post("/api/count", async (req, res) => {
-  const { action } = req.body;
+router.post("/api/count", async (ctx) => {
+  const { request } = ctx;
+  const { action } = request.body;
   if (action === "inc") {
     await Counter.create();
   } else if (action === "clear") {
@@ -27,35 +26,42 @@ app.post("/api/count", async (req, res) => {
       truncate: true,
     });
   }
-  res.send({
+
+  ctx.body = {
     code: 0,
     data: await Counter.count(),
-  });
+  };
 });
 
 // 获取计数
-app.get("/api/count", async (req, res) => {
+router.get("/api/count", async (ctx) => {
   const result = await Counter.count();
-  res.send({
+
+  ctx.body = {
     code: 0,
     data: result,
-  });
+  };
 });
 
 // 小程序调用，获取微信 Open ID
-app.get("/api/wx_openid", async (req, res) => {
-  if (req.headers["x-wx-source"]) {
-    res.send(req.headers["x-wx-openid"]);
+router.get("/api/wx_openid", async (ctx) => {
+  if (ctx.request.headers["x-wx-source"]) {
+    ctx.body = ctx.request.headers["x-wx-openid"];
   }
 });
 
-const port = process.env.PORT || 80;
+const app = new Koa();
+app
+  .use(logger())
+  .use(bodyParser())
+  .use(router.routes())
+  .use(router.allowedMethods());
 
+const port = process.env.PORT || 80;
 async function bootstrap() {
   await initDB();
   app.listen(port, () => {
     console.log("启动成功", port);
   });
 }
-
 bootstrap();
